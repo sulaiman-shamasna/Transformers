@@ -1,0 +1,6 @@
+
+tensorflow-text
+einops
+numpy
+matplotlib
+# tensorflow-text
