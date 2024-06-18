@@ -7,19 +7,22 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 from check_shape import ShapeChecker
-from preprocessing import *
+
+from preprocessing import (train_ds,
+                           val_ds,
+                           context_text_processor,
+                           target_text_processor,
+                           target_raw, context_raw)
+
+from preprocessing import (ex_context_tok,
+                           ex_tar_in,
+                           ex_tar_out)
 
 UNITS = 256
 
 class Encoder(tf.keras.layers.Layer):
     def __init__(self, text_processor: tf_text.BertTokenizer, units: int):
-        """
-        Initialize the Encoder layer.
 
-        Args:
-            text_processor (tf_text.BertTokenizer): The text processor.
-            units (int): Number of units in the embedding and RNN layers.
-        """
         super(Encoder, self).__init__()
         self.text_processor = text_processor
         self.vocab_size = text_processor.vocabulary_size()
@@ -32,15 +35,7 @@ class Encoder(tf.keras.layers.Layer):
         )
 
     def call(self, x: tf.Tensor) -> tf.Tensor:
-        """
-        Forward pass for the encoder.
-
-        Args:
-            x (tf.Tensor): Input tensor.
-
-        Returns:
-            tf.Tensor: Output tensor after embedding and RNN layers.
-        """
+   
         shape_checker = ShapeChecker()
         shape_checker(x, 'batch s')
 
@@ -53,15 +48,7 @@ class Encoder(tf.keras.layers.Layer):
         return x
 
     def convert_input(self, texts: List[str]) -> tf.Tensor:
-        """
-        Convert input texts to tensor format.
 
-        Args:
-            texts (List[str]): List of input texts.
-
-        Returns:
-            tf.Tensor: Processed tensor.
-        """
         texts = tf.convert_to_tensor(texts)
         if len(texts.shape) == 0:
             texts = tf.convert_to_tensor(texts)[tf.newaxis]
@@ -78,28 +65,14 @@ print(f'Encoder output, shape (batch, s, units): {ex_context.shape}')
 
 class CrossAttention(tf.keras.layers.Layer):
     def __init__(self, units: int, **kwargs):
-        """
-        Initialize the CrossAttention layer.
 
-        Args:
-            units (int): Number of units in the attention layer.
-        """
         super().__init__()
         self.mha = tf.keras.layers.MultiHeadAttention(key_dim=units, num_heads=1, **kwargs)
         self.layernorm = tf.keras.layers.LayerNormalization()
         self.add = tf.keras.layers.Add()
 
     def call(self, x: tf.Tensor, context: tf.Tensor) -> tf.Tensor:
-        """
-        Forward pass for the attention layer.
-
-        Args:
-            x (tf.Tensor): Query tensor.
-            context (tf.Tensor): Context tensor.
-
-        Returns:
-            tf.Tensor: Output tensor after attention and normalization.
-        """
+ 
         shape_checker = ShapeChecker()
 
         shape_checker(x, 'batch t units')
@@ -150,7 +123,8 @@ class Decoder(tf.keras.layers.Layer):
     @classmethod
     def add_method(cls, fun):
         """
-        Add a method to the Decoder class.
+        Add a method to the (Specified) Decoder class.
+        This enables adding methods to the class while compiling!
 
         Args:
             fun: Function to add.
@@ -162,13 +136,7 @@ class Decoder(tf.keras.layers.Layer):
         return fun
 
     def __init__(self, text_processor: tf_text.BertTokenizer, units: int):
-        """
-        Initialize the Decoder layer.
-
-        Args:
-            text_processor (tf_text.BertTokenizer): The text processor.
-            units (int): Number of units in the embedding and RNN layers.
-        """
+ 
         super(Decoder, self).__init__()
         self.text_processor = text_processor
         self.vocab_size = text_processor.vocabulary_size()
@@ -187,18 +155,7 @@ class Decoder(tf.keras.layers.Layer):
 
 @Decoder.add_method
 def call(self, context: tf.Tensor, x: tf.Tensor, state: tf.Tensor = None, return_state: bool = False) -> Tuple[tf.Tensor, tf.Tensor]:
-    """
-    Forward pass for the decoder.
 
-    Args:
-        context (tf.Tensor): Context tensor.
-        x (tf.Tensor): Input tensor.
-        state (tf.Tensor): Initial state tensor.
-        return_state (bool): Whether to return the state.
-
-    Returns:
-        Tuple[tf.Tensor, tf.Tensor]: Logits and state tensors.
-    """
     shape_checker = ShapeChecker()
     shape_checker(x, 'batch t')
     shape_checker(context, 'batch s units')
@@ -231,15 +188,7 @@ print(f'logits shape shape: (batch, target_vocabulary_size) {logits.shape}')
 
 @Decoder.add_method
 def get_initial_state(self, context: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
-    """
-    Get the initial state for the decoder.
 
-    Args:
-        context (tf.Tensor): Context tensor.
-
-    Returns:
-        Tuple[tf.Tensor, tf.Tensor, tf.Tensor]: Initial tokens, done flags, and state tensors.
-    """
     batch_size = tf.shape(context)[0]
     start_tokens = tf.fill([batch_size, 1], self.start_token)
     done = tf.zeros([batch_size, 1], dtype=tf.bool)
@@ -248,15 +197,7 @@ def get_initial_state(self, context: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, t
 
 @Decoder.add_method
 def tokens_to_text(self, tokens: tf.Tensor) -> tf.Tensor:
-    """
-    Convert tokens to text.
 
-    Args:
-        tokens (tf.Tensor): Tokens tensor.
-
-    Returns:
-        tf.Tensor: Text tensor.
-    """
     words = self.id_to_word(tokens)
     result = tf.strings.reduce_join(words, axis=-1, separator=' ')
     result = tf.strings.regex_replace(result, '^ *\[START\] *', '')
@@ -265,19 +206,7 @@ def tokens_to_text(self, tokens: tf.Tensor) -> tf.Tensor:
 
 @Decoder.add_method
 def get_next_token(self, context: tf.Tensor, next_token: tf.Tensor, done: tf.Tensor, state: tf.Tensor, temperature: float = 0.0) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
-    """
-    Get the next token for the decoder.
 
-    Args:
-        context (tf.Tensor): Context tensor.
-        next_token (tf.Tensor): Next token tensor.
-        done (tf.Tensor): Done flags tensor.
-        state (tf.Tensor): State tensor.
-        temperature (float): Sampling temperature.
-
-    Returns:
-        Tuple[tf.Tensor, tf.Tensor, tf.Tensor]: Next token, done flags, and state tensors.
-    """
     logits, state = self(context, next_token, state=state, return_state=True)
 
     if temperature == 0.0:
@@ -291,17 +220,13 @@ def get_next_token(self, context: tf.Tensor, next_token: tf.Tensor, done: tf.Ten
 
     return next_token, done, state
 
-# Setup the loop variables.
 next_token, done, state = decoder.get_initial_state(ex_context)
 tokens = []
 
 for n in range(10):
-    # Run one step.
     next_token, done, state = decoder.get_next_token(ex_context, next_token, done, state, temperature=1.0)
-    # Add the token to the output.
     tokens.append(next_token)
 
-# Stack all the tokens together.
 tokens = tf.concat(tokens, axis=-1)  # (batch, t)
 
 # Convert the tokens back to a string
@@ -311,41 +236,18 @@ result[:3].numpy()
 class Translator(tf.keras.Model):
     @classmethod
     def add_method(cls, fun):
-        """
-        Add a method to the Translator class.
 
-        Args:
-            fun: Function to add.
-
-        Returns:
-            Function added to the class.
-        """
         setattr(cls, fun.__name__, fun)
         return fun
 
     def __init__(self, units: int, context_text_processor: tf_text.BertTokenizer, target_text_processor: tf_text.BertTokenizer):
-        """
-        Initialize the Translator model.
 
-        Args:
-            units (int): Number of units in the encoder and decoder.
-            context_text_processor (tf_text.BertTokenizer): The context text processor.
-            target_text_processor (tf_text.BertTokenizer): The target text processor.
-        """
         super().__init__()
         self.encoder = Encoder(context_text_processor, units)
         self.decoder = Decoder(target_text_processor, units)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
-        """
-        Forward pass for the translator model.
 
-        Args:
-            inputs (Tuple[tf.Tensor, tf.Tensor]): Context and target tensors.
-
-        Returns:
-            tf.Tensor: Logits tensor.
-        """
         context, x = inputs
         context = self.encoder(context)
         logits = self.decoder(context, x)
@@ -360,17 +262,7 @@ class Translator(tf.keras.Model):
 
 @Translator.add_method
 def translate(self, texts: List[str], max_length: int = 50, temperature: float = 0.0) -> tf.Tensor:
-    """
-    Translate input texts.
 
-    Args:
-        texts (List[str]): List of input texts.
-        max_length (int): Maximum length of the output.
-        temperature (float): Sampling temperature.
-
-    Returns:
-        tf.Tensor: Translated text tensor.
-    """
     context = self.encoder.convert_input(texts)
     batch_size = tf.shape(texts)[0]
 
@@ -393,6 +285,7 @@ def translate(self, texts: List[str], max_length: int = 50, temperature: float =
     return result
 
 model = Translator(UNITS, context_text_processor, target_text_processor)
+# model.summary()
 logits = model((ex_context_tok, ex_tar_in))
 
 print(f'Context tokens, shape: (batch, s, units) {ex_context_tok.shape}')
