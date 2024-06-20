@@ -29,4 +29,3 @@ history = model.fit(
     ]
 )
 
-# model.save('trained_models/big_model11')
