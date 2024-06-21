@@ -1,0 +1,11 @@
+device: "cuda"
+data_path: "data/spam.csv"
+model_save_path: "trained_models/fineTuneBERT.pt"
+trained_model_path: "trained_models/fineTuneBERT.pt"
+bert_model_name: "google-bert/bert-base-uncased"
+
+max_len: 25
+batch_size: 32
+epochs: 1
+learning_rate: 1e-3
+
