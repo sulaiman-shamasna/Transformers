@@ -1,0 +1,7 @@
+llama-index-finetuning
+# llama-index-finetuning-callbacks
+llama-index-llms-mistralai
+llama-index-embeddings-mistralai
+llama-index-readers-file
+python-dotenv
+
