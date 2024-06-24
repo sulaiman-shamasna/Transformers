@@ -1,0 +1,9 @@
+MODEL = 't5-small'
+BATCH_SIZE = 48
+NUM_PROCS = 16
+EPOCHS = 10
+OUT_DIR = 'results_t5small'
+MAX_LENGTH = 256
+TRAIN_FILE = 'input/train.csv'
+VALID_FILE = 'input/valid.csv'
+LEARNING_RATE = 0.0001
