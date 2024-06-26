@@ -1,0 +1,12 @@
+# If you are using PyTorch backendpy
+# pip install torch==2.0.1
+# pip install transformers @ git+https://github.com/huggingface/transformers@de9255de27abfcae4a1f816b904915f0b1e23cd9
+#lightning @ git+https://github.com/Lightning-AI/lightning@master
+tokenizers==0.13.3
+jsonargparse[signatures]  # CLI
+bitsandbytes==0.39.1 # quantize
+datasets==2.13.1  # quantize/gptq.py
+zstandard==0.19.0  # prepare_redpajama.py
+scipy
+loralib==0.1.1
+einops==0.6.1
