@@ -1,23 +1,74 @@
 
-
-# Load pretrained Falkon 7B model
+import sys
+import os
+import numpy as np
 from transformers import AutoTokenizer, AutoModelForCausalLM
-# model_name = "tiiuae/falcon-7b-instruct" 
+from datasets import Dataset, load_dataset
+import pandas as pd
+import transformers
+
+# Check NumPy version
+print(f"NumPy version: {np.__version__}")
+
+# Example DataFrame (replace this with your actual DataFrame)
+df_faq = pd.DataFrame({
+    'question': ['What is AI?', 'How to train a model?'],
+    'answer': ['AI is the simulation of human intelligence in machines.', 'Training a model involves feeding it data and adjusting its parameters.']
+})
+
+def gen_prompt(text_input):
+    print(f"gen_prompt input: {text_input}")
+    return f"""
+    <human>: {text_input["question"]}
+    <assistant>: {text_input["answer"]}
+    """.strip()
+
+def gen_and_tok_prompt(text_input):
+    full_input = gen_prompt(text_input)
+    tok_full_prompt = tokenizer(full_input, padding=True, truncation=True, return_tensors="pt")
+    return {
+        'input_ids': tok_full_prompt['input_ids'][0],
+        'attention_mask': tok_full_prompt['attention_mask'][0]
+    }
+
+# Create Dataset from DataFrame
+data = Dataset.from_pandas(df_faq[['question', 'answer']])
+
+# Load the model and tokenizer
+model_name = "tiiuae/falcon-7b-instruct"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(
-    "tiiuae/falcon-7b-instruct",
-#     load_in_8bit=True,  #if you want to load the 8-bit model
-#     device_map='auto', 
+    model_name,
     trust_remote_code=True,
 )
 
-tokenizer = AutoTokenizer.from_pretrained(
-    "tiiuae/falcon-7b-instruct",
-)
-
-
-# Data tockenization
+# Data tokenization
 tokenizer.pad_token = tokenizer.eos_token
-data = data.map(gen_and_tok_prompt)
+
+def tokenize_and_check_length(batch):
+    tokenized_batch = [gen_and_tok_prompt(x) for x in batch]
+    input_ids_lengths = [len(x['input_ids']) for x in tokenized_batch]
+    attention_mask_lengths = [len(x['attention_mask']) for x in tokenized_batch]
+
+    # Ensure all elements have the same length
+    assert all(length == input_ids_lengths[0] for length in input_ids_lengths), "Inconsistent lengths in input_ids"
+    assert all(length == attention_mask_lengths[0] for length in attention_mask_lengths), "Inconsistent lengths in attention_mask"
+
+    # Combine all input_ids and attention_mask into single tensors
+    input_ids = [x['input_ids'].tolist() for x in tokenized_batch]
+    attention_mask = [x['attention_mask'].tolist() for x in tokenized_batch]
+
+    return {
+        'input_ids': input_ids,
+        'attention_mask': attention_mask
+    }
+
+# Use a lambda that properly maps over the rows of the dataset
+data = data.map(lambda x: tokenize_and_check_length([x]), batched=True, remove_columns=["question", "answer"])
+
+print(f'Data type is {type(data)}')
+# sys.exit(0)
+
 
 # Prepare model for finetuning
 
@@ -42,9 +93,10 @@ def print_trainable_parameters(model):
         f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
     )
 
-# Step(3)
-from peft import LoraConfig, get_peft_model
 
+# Step(3)
+from peft import LoraConfig, get_peft_model, PeftConfig, PeftModel
+# from transformers import PeftConfig
 config = LoraConfig(
     r=16,
     lora_alpha=32,
@@ -84,11 +136,10 @@ trainer.train()
 
 
 # Save the finetuned model
-model.save_pretrained('location where you  want the model to be stored')
-
+model.save_pretrained('trained_models/')
 
 # Inference
-config = PeftConfig.from_pretrained("location where new model is stored")
+config = PeftConfig.from_pretrained("trained_models/")
 model = AutoModelForCausalLM.from_pretrained(
     config.base_model_name_or_path,
 #     load_in_8bit=True,
@@ -97,10 +148,12 @@ model = AutoModelForCausalLM.from_pretrained(
 
 )
 
+
+
 tokenizer = AutoTokenizer.from_pretrained(
     config.base_model_name_or_path)
 
-model_inf = PeftModel.from_pretrained(model,"location where new model is stored" )
+model_inf = PeftModel.from_pretrained(model,"trained_models/" )
 
 # create your own prompt  
 prompt = f"""
@@ -120,6 +173,8 @@ gen_config.num_return_sequences = 1
 gen_config.pad_token_id = tokenizer.eos_token_id
 gen_config.eos_token_id = tokenizer.eos_token_id
 
+print('BEFORE TOCKENIZER')
+import torch
 # do the inference 
 with torch.inference_mode():
     outputs = model.generate(input_ids = encoding.input_ids, attention_mask = encoding.attention_mask,generation_config = gen_config )
