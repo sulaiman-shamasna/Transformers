@@ -1,0 +1,14 @@
+{
+"name": "Python Dev Container",
+"context": "..",
+"dockerFile": "Dockerfile",
+"settings": {
+    "terminal.integrated.shell.linux": "/bin/bash"
+},
+"extensions": [
+    "ms-python.python"
+],
+"forwardPorts": [],
+"postCreateCommand": "pip install -r requirements.txt",
+"remoteUser": "root"
+}
